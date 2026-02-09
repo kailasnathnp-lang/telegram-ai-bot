@@ -7,3 +7,4 @@ openpyxl
 pdfplumber
 pillow
 pytesseract
+gunicorn
