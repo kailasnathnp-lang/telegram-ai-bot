@@ -1,37 +1,3 @@
-```python
-"""
-Reliable Telegram AI bot (Render/Railway-ready) with:
-- Groq OpenAI-compatible Chat Completions (text models)
-- SQLite memory + chat history
-- Daily notes
-- Voice -> Whisper transcription (optional)
-- PDF text extraction (optional; text-based PDFs)
-- Image OCR (optional, needs Tesseract)
-- Excel/CSV reading (optional)
-
-IMPORTANT:
-- Set these ENV VARS on Render/Railway:
-  BOT_TOKEN, GROQ_API_KEY, WEBHOOK_SECRET
-  MODEL=llama-3.1-8b-instant   (or llama-3.3-70b-versatile)
-  WHISPER_MODEL=whisper-large-v3-turbo (optional)
-  TELEGRAM_SECRET_TOKEN=... (optional, extra security)
-
-What this bot can do:
-- Normal chat: just message the bot.
-- Save daily note:  today: something...
-- Show daily note:  today
-- Save permanent memory: remember: something...
-- Voice note: transcribe (if whisper works) and reply.
-- Send PDF: extract text and summarize/answer.
-- Send Excel/CSV: read table (first 200 rows per sheet) and summarize/answer.
-- Send photo: OCR (if tesseract installed) and explain.
-
-NOTES:
-- On free Render, the service can sleep; first reply after idle may be slow.
-- SQLite on Render free is not truly permanent if instance restarts; for true permanent storage,
-  use a managed DB (Postgres) later.
-"""
-
 import os
 import io
 import sqlite3
