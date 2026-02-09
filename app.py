@@ -1,3 +1,37 @@
+```python
+"""
+Reliable Telegram AI bot (Render/Railway-ready) with:
+- Groq OpenAI-compatible Chat Completions (text models)
+- SQLite memory + chat history
+- Daily notes
+- Voice -> Whisper transcription (optional)
+- PDF text extraction (optional; text-based PDFs)
+- Image OCR (optional, needs Tesseract)
+- Excel/CSV reading (optional)
+
+IMPORTANT:
+- Set these ENV VARS on Render/Railway:
+  BOT_TOKEN, GROQ_API_KEY, WEBHOOK_SECRET
+  MODEL=llama-3.1-8b-instant   (or llama-3.3-70b-versatile)
+  WHISPER_MODEL=whisper-large-v3-turbo (optional)
+  TELEGRAM_SECRET_TOKEN=... (optional, extra security)
+
+What this bot can do:
+- Normal chat: just message the bot.
+- Save daily note:  today: something...
+- Show daily note:  today
+- Save permanent memory: remember: something...
+- Voice note: transcribe (if whisper works) and reply.
+- Send PDF: extract text and summarize/answer.
+- Send Excel/CSV: read table (first 200 rows per sheet) and summarize/answer.
+- Send photo: OCR (if tesseract installed) and explain.
+
+NOTES:
+- On free Render, the service can sleep; first reply after idle may be slow.
+- SQLite on Render free is not truly permanent if instance restarts; for true permanent storage,
+  use a managed DB (Postgres) later.
+"""
+
 import os
 import io
 import sqlite3
@@ -25,7 +59,7 @@ WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "").strip()
 # Extra Telegram webhook protection (recommended)
 TELEGRAM_SECRET_TOKEN = os.environ.get("TELEGRAM_SECRET_TOKEN", "").strip()
 
-# Chat model (TEXT MODELS only)
+# Chat model (TEXT MODELS only) - Groq-safe defaults
 MODEL = os.environ.get("MODEL", "llama-3.1-8b-instant").strip()
 
 # Whisper model (AUDIO ONLY)
@@ -85,6 +119,9 @@ def init_db():
             )
         """)
         conn.commit()
+
+# ✅ IMPORTANT: run DB init at import time so it works under gunicorn on Render
+init_db()
 
 def get_memory(user_id: str) -> str:
     with db_conn() as conn:
@@ -148,8 +185,8 @@ def send_message(chat_id, text, reply_to_message_id=None):
         payload["reply_to_message_id"] = reply_to_message_id
     try:
         tg_request("sendMessage", payload=payload, timeout=15)
-    except Exception:
-        pass
+    except Exception as e:
+        print("sendMessage failed:", repr(e))
 
 def get_file_bytes(file_id: str) -> bytes:
     info = tg_request("getFile", payload={"file_id": file_id})
@@ -180,7 +217,7 @@ def extract_pdf_text(pdf_bytes: bytes) -> str:
 def extract_excel_text(file_bytes: bytes, filename: str) -> str:
     """
     Reads Excel/CSV into text.
-    - For .xlsx/.xls: reads ALL sheets
+    - For .xlsx/.xls: reads ALL sheets (first 200 rows each)
     - For .csv: reads as one table
     """
     if pd is None:
@@ -190,15 +227,12 @@ def extract_excel_text(file_bytes: bytes, filename: str) -> str:
         if filename.endswith(".csv"):
             df = pd.read_csv(io.BytesIO(file_bytes))
             df = df.fillna("")
-            return "[CSV]\n" + df.to_string(index=False)
+            return "[CSV]\n" + df.head(200).to_string(index=False)
 
-        # Excel
         xls = pd.ExcelFile(io.BytesIO(file_bytes))
         output = []
         for sheet_name in xls.sheet_names:
-            df = pd.read_excel(xls, sheet_name=sheet_name)
-            df = df.fillna("")
-            # limit huge sheets to avoid token overflow
+            df = pd.read_excel(xls, sheet_name=sheet_name).fillna("")
             df_head = df.head(200)
             output.append(f"[Sheet: {sheet_name}]\n{df_head.to_string(index=False)}")
 
@@ -227,7 +261,8 @@ def transcribe_voice(audio_bytes: bytes) -> str:
         f.name = "voice.ogg"
         res = client.audio.transcriptions.create(model=WHISPER_MODEL, file=f)
         return getattr(res, "text", "") or ""
-    except Exception:
+    except Exception as e:
+        print("Whisper error:", repr(e))
         return ""
 
 # ------------------- Commands -------------------
@@ -334,7 +369,8 @@ def webhook():
             save_history(user_id, "user", user_text)
             reply = chat_reply(user_id, user_text)
             save_history(user_id, "assistant", reply)
-        except Exception:
+        except Exception as e:
+            print("Groq/DB error:", repr(e))
             reply = "Hmm, I had a glitch. Try again?"
         send_message(chat_id, reply, reply_to_message_id=message_id)
         return "ok"
@@ -357,12 +393,13 @@ def webhook():
             save_history(user_id, "user", user_text)
             reply = chat_reply(user_id, user_text)
             save_history(user_id, "assistant", reply)
-        except Exception:
+        except Exception as e:
+            print("Groq/DB error (voice):", repr(e))
             reply = "Voice handled, but AI reply failed. Try again?"
         send_message(chat_id, reply, reply_to_message_id=message_id)
         return "ok"
 
-    # -------- DOCUMENTS (PDF/EXCEL) --------
+    # -------- DOCUMENTS (PDF/EXCEL/CSV) --------
     if "document" in msg:
         doc = msg["document"]
         file_id = doc.get("file_id")
@@ -392,7 +429,8 @@ def webhook():
             save_history(user_id, "user", user_text)
             reply = chat_reply(user_id, user_text)
             save_history(user_id, "assistant", reply)
-        except Exception:
+        except Exception as e:
+            print("Groq/DB error (file):", repr(e))
             reply = "I extracted the file, but the AI reply failed. Try again?"
         send_message(chat_id, reply, reply_to_message_id=message_id)
         return "ok"
@@ -412,7 +450,8 @@ def webhook():
             save_history(user_id, "user", user_text)
             reply = chat_reply(user_id, user_text)
             save_history(user_id, "assistant", reply)
-        except Exception:
+        except Exception as e:
+            print("Groq/DB error (photo):", repr(e))
             reply = "I read the image text, but AI reply failed. Try again?"
         send_message(chat_id, reply, reply_to_message_id=message_id)
         return "ok"
@@ -420,8 +459,9 @@ def webhook():
     send_message(chat_id, "Send text, a voice note, a PDF, an Excel/CSV, or an image 🙂", reply_to_message_id=message_id)
     return "ok"
 
-# ------------------- Main -------------------
+# ------------------- Main (local dev only) -------------------
 if __name__ == "__main__":
-    init_db()
     port = int(os.environ.get("PORT", "5000"))
     app.run(host="0.0.0.0", port=port)
+```
+
