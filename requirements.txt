@@ -1,0 +1,9 @@
+flask
+requests
+python-dotenv
+openai
+pandas
+openpyxl
+pdfplumber
+pillow
+pytesseract
