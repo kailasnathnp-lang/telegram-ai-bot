@@ -86,7 +86,7 @@ def init_db():
         """)
         conn.commit()
 
-# ✅ IMPORTANT: run DB init at import time so it works under gunicorn on Render
+# ✅ Run DB init at import time so it works under gunicorn on Render
 init_db()
 
 def get_memory(user_id: str) -> str:
@@ -191,16 +191,14 @@ def extract_excel_text(file_bytes: bytes, filename: str) -> str:
 
     try:
         if filename.endswith(".csv"):
-            df = pd.read_csv(io.BytesIO(file_bytes))
-            df = df.fillna("")
+            df = pd.read_csv(io.BytesIO(file_bytes)).fillna("")
             return "[CSV]\n" + df.head(200).to_string(index=False)
 
         xls = pd.ExcelFile(io.BytesIO(file_bytes))
         output = []
         for sheet_name in xls.sheet_names:
             df = pd.read_excel(xls, sheet_name=sheet_name).fillna("")
-            df_head = df.head(200)
-            output.append(f"[Sheet: {sheet_name}]\n{df_head.to_string(index=False)}")
+            output.append(f"[Sheet: {sheet_name}]\n{df.head(200).to_string(index=False)}")
 
         return "\n\n".join(output).strip()
 
@@ -427,7 +425,6 @@ def webhook():
 
 # ------------------- Main (local dev only) -------------------
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", "5000"))
+    # ✅ For local runs, also respect Render/Railway PORT if present
+    port = int(os.environ.get("PORT", "10000"))
     app.run(host="0.0.0.0", port=port)
-```
-
