@@ -26,7 +26,7 @@ WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "").strip()
 TELEGRAM_SECRET_TOKEN = os.environ.get("TELEGRAM_SECRET_TOKEN", "").strip()
 
 # Chat model (TEXT MODELS only)
-MODEL = os.environ.get("MODEL", "meta-llama/llama-4-maverick-17b-128e-instruct").strip()
+MODEL = os.environ.get("MODEL", "llama-3.1-8b-instant").strip()
 
 # Whisper model (AUDIO ONLY)
 WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "whisper-large-v3-turbo").strip()
